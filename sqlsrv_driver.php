@@ -574,29 +574,45 @@ class CI_DB_sqlsrv_driver extends CI_DB {
 	 */
 	function _limit($sql, $limit, $offset)
 	{
-            /*
-		$i = $limit + $offset;
-	
-		return preg_replace('/(^\SELECT (DISTINCT)?)/i','\\1 TOP '.$i.' ', $sql);
-             * 
-             */
-        if (count($this->ar_orderby) > 0)
-        {
-            $OrderBy  = "ORDER BY ";
-            $OrderBy .= implode(', ', $this->ar_orderby);
+            if($offset === FALSE || version_compare($this->version(), "9.0.00", "<=")) {
+                $i = $limit + $offset;
+                return preg_replace('/(^\SELECT (DISTINCT)?)/i','\\1 TOP '.$i.' ', $sql);
+           } 
+           else
+           {
+                if (version_compare($this->version(), "11.0.00", ">="))
+                {
+                    $orderBy  = "ORDER BY ";
+                    $orderBy .= implode(', ', $this->ar_orderby);
 
-            if ($this->ar_order !== FALSE)
-            {
-                $OrderBy .= ($this->ar_order == 'desc') ? ' DESC' : ' ASC';
-            }        
-        }
-        
-        $sql = preg_replace('/(\\'. $OrderBy .'\n?)/i','', $sql);
-        $sql = preg_replace('/(^\SELECT (DISTINCT)?)/i','\\1 row_number() OVER ('.$OrderBy.') AS rownum, ', $sql);
+                    if ($this->ar_order !== FALSE) {
+                        $orderBy .= ($this->ar_order == 'desc') ? ' DESC' : ' ASC';
+                    } 
+                    else
+                    {
+                        $orderBy .= '1 ASC ';
+                    }
+                    if ($this->ar_orderby !== FALSE)
+                        return $sql . "OFFSET " . $offset . " ROWS FETCH NEXT " . $limit . " ROWS ONLY";
+                    else
+                        return $sql . $orderBy . "OFFSET " . $offset . " ROWS FETCH NEXT " . $limit . " ROWS ONLY";
+                    // return $sql . "OFFSET " . $offset . " ROWS FETCH NEXT " . $limit . " ROWS ONLY";
+                }
+                else
+                {
+                    $orderBy  = "ORDER BY ";
+                    $orderBy .= implode(', ', $this->ar_orderby);
 
-        $NewSQL = "SELECT * \nFROM (\n" . $sql . ") AS A \nWHERE A.rownum BETWEEN (" .$offset . ") AND (".$limit.")";
-            
-        return $NewSQL;
+                    if ($this->ar_order !== FALSE) {
+                    $orderBy .= ($this->ar_order == 'desc') ? ' DESC' : ' ASC';
+                    }
+                    $sql = preg_replace('/(\\'. $orderBy .'\n?)/i','', $sql);
+                    $sql = preg_replace('/(^\SELECT (DISTINCT)?)/i','\\1 row_number() OVER ('.$orderBy.') AS CI_offset_row_number, ', $sql);
+
+                    $newSQL = "SELECT * \nFROM (\n" . $sql . ") AS A \nWHERE A.CI_offset_row_number BETWEEN (" .($offset + 1) . ") AND (".($offset + $limit).")";
+                    return     $newSQL;
+                }
+            }
 	}
 
 	// --------------------------------------------------------------------
